@@ -1,6 +1,23 @@
 module HungryPuppies
+  enum Ordering
+    GT
+    EQ
+    LT
+  end
+
   alias Treat = UInt32
   alias Happiness = Int32
+  alias Relation = Tuple(Ordering, Treat)
+
+  def self.met?(r : Relation, t : Treat) : Bool
+    ord, tt = r
+    case ord
+    when Ordering::GT; t > tt
+    when Ordering::EQ; t == tt
+    when Ordering::LT; t < tt
+    else raise "Unknown relation #{r}"
+    end
+  end
 
   def self.max_happiness_possibilities(treats : Array(Treat)) : Tuple(Happiness, Array(Array(Treat)))
     treats.sort
@@ -77,76 +94,62 @@ module HungryPuppies
     {max_happiness, candidates.select { |_, h| h == max_happiness }.map { |t, _| t }}
   end
 
-  # An attempt to use less memory by only storing the last two treats.
-  # Unfortunately, duplicates code.
-  def self.max_happiness(treats : Array(Treat)) : Tuple(Happiness, UInt32)
+  # Uses less memory because it only returns one possibility.
+  def self.max_happiness(treats : Array(Treat)) : Tuple(Happiness, Array(Treat))
     treats.sort
+    seen = {} of Tuple(Array(Treat), Relation?) => Tuple(Happiness, Array(Treat))?
+    max_happiness(treats, nil, seen).not_nil!
+  end
 
-    # Possible optimal happinesses for the left (N-1) puppies,
-    # using the given list of N treats, and rightmost two treats
-    best = Hash(Array(Treat), Array(Tuple(Treat, Treat, Happiness))).new { |h, k|
-      h[k] = [] of Tuple(Treat, Treat, Happiness)
-    }
+  private def self.max_happiness(treats : Array(Treat), relation : Relation?, seen : Hash(Tuple(Array(Treat), Relation?), Tuple(Happiness, Array(Treat))?)) : Tuple(Happiness, Array(Treat))?
+    if treats.size == 1
+      return {0, treats} if relation.nil?
+      return nil unless met?(relation, treats[0])
+      ord, _ = relation
+      case ord
+      when Ordering::GT; return {1, treats}
+      when Ordering::EQ; return {0, treats}
+      when Ordering::LT; return {-1, treats}
+      else raise "Unknown relation #{relation}"
+      end
+    end
 
-    # This assumes that each_combination maintains the original element order.
-    # Particularly, we care that the sort order is maintained,
-    # because the keys in `seen` and `@best` are sorted.
-    # If this becomes not true, we can sort each combination,
-    # but it will take more time.
+    return seen[{treats, relation}] if seen.has_key?({treats, relation})
 
-    # Initialize best with every two-combination
-    # (in block so that seen's scope is limited)
-    Set(Array(Treat)).new.tap { |seen|
-      treats.each_combination(2) { |combo|
-        next if seen.includes?(combo)
-        seen.add(combo)
-        a, b = combo
-        if a == b
-          best[combo] = [{a, b, 0}]
-        else
-          # Because {a, b} => -1 is too low.
-          best[combo] = [{b, a, 1}]
-        end
-      }
-    }
+    tried = Set(Treat).new
 
-    (3..treats.size).each { |n|
-      seen = Set(Array(Treat)).new
-      treats.each_combination(n) { |combo|
-        next if seen.includes?(combo)
-        seen.add(combo)
+    best = nil
 
-        seen_sub = Set(Treat).new
-        candidates = combo.each_with_index.flat_map { |rightmost, i|
-          next [] of Tuple(Treat, Treat, Happiness) if seen_sub.includes?(rightmost)
-          seen_sub.add(rightmost)
+    treats.each_with_index { |treat, i|
+      next if tried.includes?(treat)
+      tried.add(treat)
 
-          rest = combo[0...i] + combo[(i + 1)..-1]
+      next unless relation.nil? || met?(relation, treat)
 
-          best[rest].map { |a, b, prev_happiness|
-            new_happiness = prev_happiness
-            new_happiness += 1 if b > a && b > rightmost
-            new_happiness -= 1 if b < a && b < rightmost
-            {b, rightmost, new_happiness}
-          }
-        }
+      rest = treats[0...i] + treats[(i + 1)..-1]
 
-        max_happiness = candidates.map { |_, _, h| h }.max
-        best[combo] = candidates.select { |_, _, h| h + 1 >= max_happiness }
+      try_replace = ->(h : Happiness, ts : Array(Treat)) {
+        tmp_best = best
+        best = {h, [treat] + ts} if tmp_best.nil? || h > tmp_best[0]
       }
 
-      # We can delete the unneeded entries now to save space.
-      best.delete_if { |k, _| k.size < n }
+      gt = max_happiness(rest, {Ordering::GT, treat}, seen)
+      eq = max_happiness(rest, {Ordering::EQ, treat}, seen)
+      lt = max_happiness(rest, {Ordering::LT, treat}, seen)
+
+      if gt
+        h, o = gt
+        h -= 1 if relation.nil? || relation[0] == Ordering::LT
+        try_replace.call(h, o)
+      end
+      if lt
+        h, o = lt
+        h += 1 if relation.nil? || relation[0] == Ordering::GT
+        try_replace.call(h, o)
+      end
+      try_replace.call(*eq) if eq
     }
 
-    candidates = best[treats].map { |a, b, happiness|
-      new_happiness = happiness
-      new_happiness += 1 if b > a
-      new_happiness -= 1 if b < a
-      new_happiness
-    }
-
-    max = candidates.max
-    {max, candidates.count { |h| h == max }.to_u32}
+    seen[{treats, relation}] = best
   end
 end

@@ -29,12 +29,13 @@ describe HungryPuppies do
     }
   end
 
-  if false
+  if ENV.has_key?("TRAVIS")
     it "works on big" do
       expected, treats = {10, [1, 1, 2, 2, 2, 2, 2, 2, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9]}
-      max, possibilities = HungryPuppies.max_happiness(treats.map(&.to_u32))
+      max, possibility = HungryPuppies.max_happiness(treats.map(&.to_u32))
       max.should eq(expected)
-      puts "#{possibilities} possibilities"
+      happiness(possibility).should eq(max)
+      puts possibility
     end
   end
 end
