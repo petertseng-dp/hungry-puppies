@@ -57,7 +57,7 @@ module HungryPuppies
         seen.add(combo)
 
         seen_sub = Set(Treat).new
-        candidates = combo.each_with_index.flat_map { |rightmost, i|
+        candidates = combo.each_with_index.flat_map { |(rightmost, i)|
           next [] of Tuple(Array(Treat), Happiness) if seen_sub.includes?(rightmost)
           seen_sub.add(rightmost)
 
@@ -71,7 +71,7 @@ module HungryPuppies
             new_happiness -= 1 if b < a && b < rightmost
             {prev_best + [rightmost], new_happiness}
           }
-        }
+        }.to_a
 
         max_happiness = candidates.map { |_, h| h }.max
         best[combo] = candidates.select { |_, h| h + 1 >= max_happiness }
